@@ -5,6 +5,10 @@
 #define PIECE_COLOR_MASK 0b10000000
 #define PIECE_TYPE_MASK 0b00001111
 
+// info https://pages.cs.wisc.edu/~psilord/blog/data/chess-pages/rep.html
+
+// info https://www.chessprogramming.org/Efficient_Generation_of_Sliding_Piece_Attacks
+
 // Pieces
 // types of pieces
 #define PIECE_TYPE_PAWN 0
@@ -17,25 +21,27 @@
 #define COLOR_WHITE 1
 #define COLOR_BLACK 0
 // piece indices
-#define BITBOARD_BLACK_PAWN 0
-#define BITBOARD_BLACK_BISHOP 1
-#define BITBOARD_BLACK_KNIGHT 2
-#define BITBOARD_BLACK_ROOK 3
-#define BITBOARD_BLACK_QUEEN 4
-#define BITBOARD_BLACK_KING 5
+#define BITBOARD_BLACK_PAWN		0
+#define BITBOARD_BLACK_BISHOP	1
+#define BITBOARD_BLACK_KNIGHT	2
+#define BITBOARD_BLACK_ROOK		3
+#define BITBOARD_BLACK_QUEEN	4
+#define BITBOARD_BLACK_KING		5
 
 // Bitboards
-#define BITBOARD_WHITE_PAWN 6
-#define BITBOARD_WHITE_BISHOP 7
-#define BITBOARD_WHITE_KNIGHT 8
-#define BITBOARD_WHITE_ROOK 9
-#define BITBOARD_WHITE_QUEEN 10
-#define BITBOARD_WHITE_KING 11
+#define BITBOARD_WHITE_PAWN		6
+#define BITBOARD_WHITE_BISHOP	7
+#define BITBOARD_WHITE_KNIGHT	8
+#define BITBOARD_WHITE_ROOK		9
+#define BITBOARD_WHITE_QUEEN	10
+#define BITBOARD_WHITE_KING		11
 
-#define BITBOARD_WHITE_PIECES 12
-#define BITBOARD_BLACK_PIECES 13
+#define BITBOARD_BLACK_PIECES	12
+#define BITBOARD_WHITE_PIECES	13
+#define BITBOARD_ALL_PIECES		13
 
-#define BITBOARDS_SIZE (BITBOARD_BLACK_PIECES + 1)
+#define BITBOARDS_FIGURES_SIZE (BITBOARD_WHITE_KING + 1)
+#define BITBOARDS_SIZE (BITBOARD_ALL_PIECES + 1)
 
 // initial piece positions
 #define STARTUP_WHITE_PAWNS_BITMAP		0b0000000000000000000000000000000000000000000000001111111100000000
@@ -59,6 +65,25 @@
 #define STARTUP_WHITE_PIECES_BITMAP		0b0000000000000000000000000000000000000000000000001111111111111111
 #define STARTUP_BLACK_PIECES_BITMAP		0b1111111111111111000000000000000000000000000000000000000000000000
 
+#define STARTUP_ALL_PIECES_BITMAP		0b1111111111111111000000000000000000000000000000001111111111111111
+
+#define MASK_1							0b0000000000000000000000000000000000000000000000000000000011111111
+#define MASK_2							0b0000000000000000000000000000000000000000000000001111111100000000
+//#define MASK_3							0b0000000000000000000000000000000000000000000000000000000000000000
+//#define MASK_4							0b0000000000000000000000000000000000000000000000000000000000000000
+//#define MASK_5							0b0000000000000000000000000000000000000000000000000000000000000000
+//#define MASK_6							0b0000000000000000000000000000000000000000000000000000000000000000
+//#define MASK_7							0b0000000000000000000000000000000000000000000000000000000000000000
+//#define MASK_8							0b0000000000000000000000000000000000000000000000000000000000000000
+
+#define MASK_8_INVERSE					0b0000000011111111111111111111111111111111111111111111111111111111
+
+#define MASK_8_INVERSE					0b0000000011111111111111111111111111111111111111111111111111111111
+#define MASK_A_INVERSE					0b1111111011111110111111101111111011111110111111101111111011111110
+#define MASK_H_INVERSE					0b0111111101111111011111110111111101111111011111110111111101111111
+
+#define MASK_A8_INVERSE					(MASK_A_INVERSE | MASK_8_INVERSE)
+
 // squares
 #define SQUARE_BITMASK_X 0b00000111
 #define SQUARE_BITMASK_Y 0b00111000
@@ -76,6 +101,13 @@
 
 #define MOVE_EN_PASSANT_MASK	0b0000000000000001
 
+#define MAX_NUMBER_OF_PSEUDO_LEGAL_MOVES_PER_BOARD 3136 // in reality much much lower but lets start with the safest number. cumputed by assuming the field has 64 queens taht each have 7*4 moves
+
+#define CASTLE_RIGHTS_Q 0b00000001
+#define CASTLE_RIGHTS_q 0b00000010
+#define CASTLE_RIGHTS_K 0b00000100
+#define CASTLE_RIGHTS_k 0b00001000
+
 /*Board definition:
 56	57	58	59	60	61	62	63
 48	49	50	51	52	53	54	55
@@ -86,27 +118,37 @@
 8	9	10	11	12	13	14	15
 0	1	2	3	4	5	6	7*/
 
-class Piece {
+// @ToDO
+class Bitboard {
 public:
-	Piece(uint8_t type, uint8_t color) : binary(type | color) {}
+	
 
-	bool getColor() {
-		return (binary & PIECE_COLOR_MASK) >> 7;
+
+private:
+	uint64_t bitboard;
+};
+
+class PieceType {
+public:
+	PieceType(uint8_t bitboardIndex) : bitboardIndex(bitboardIndex) {}
+
+	uint8_t getBitboardIndex() {
+		return bitboardIndex;
 	}
 
-	uint8_t getType() {
-		return binary & PIECE_TYPE_MASK;
+	uint8_t getBitboardColorIndex() {
+		return BITBOARD_BLACK_PIECES + isWhite();
 	}
 
-	uint8_t getPieceIndex() {
-		return getType() + getColor() * BITBOARD_WHITE_PAWN;
+	bool isWhite() {
+		return bitboardIndex < BITBOARD_WHITE_PAWN;
 	}
 	
 	operator uint8_t() {
-		return binary;
+		return bitboardIndex;
 	}
 private:
-	uint8_t binary;
+	uint8_t bitboardIndex;
 };
 
 class Square {
@@ -142,6 +184,7 @@ private:
 
 class Move {
 public:
+	Move() : binary(0) {}
 	Move(Square from, Square to, uint8_t moveOptions) {
 		binary = from | (to >> MOVE_TO_BIT_SHIFT) | (moveOptions >> MOVE_OPTIONS_BIT_SHIFT);
 	}
@@ -161,29 +204,43 @@ private:
 	uint16_t binary;
 };
 
+struct PseudoLegalMoves {
+	PseudoLegalMoves() : size(0) {}
+	Move moves[MAX_NUMBER_OF_PSEUDO_LEGAL_MOVES_PER_BOARD];
+	uint16_t size;
+};
+
 class Board {
 public:
 	Board() {
-		bitboards[BITBOARD_WHITE_PAWN] = STARTUP_WHITE_PAWNS_BITMAP;
-		bitboards[BITBOARD_BLACK_PAWN] = STARTUP_BLACK_PAWNS_BITMAP;
+		setupInitialBoard();
+		PseudoLegalMoves moves;
+		getPseudoLegalMoves(moves);
+	}
 
-		bitboards[BITBOARD_WHITE_ROOK] = STARTUP_WHITE_ROOKS_BITMAP;
-		bitboards[BITBOARD_BLACK_ROOK] = STARTUP_BLACK_ROOKS_BITMAP;
+	void getPseudoLegalMoves(PseudoLegalMoves& moves) {
+		for (size_t pieceType= 0; pieceType < BITBOARDS_FIGURES_SIZE; pieceType++) {
+			uint64_t bitboardMoves = generatePlmForPiece(pieceType);
+		}
+	}
 
-		bitboards[BITBOARD_WHITE_BISHOP] = STARTUP_WHITE_BISHOPS_BITMAP;
-		bitboards[BITBOARD_BLACK_BISHOP] = STARTUP_BLACK_BISHOPS_BITMAP;
+	uint64_t generatePlmForPiece(PieceType type) {
+		switch (type) {
+		case BITBOARD_WHITE_PAWN: return plmForWhitePawn();
+		}
+	}
 
-		bitboards[BITBOARD_WHITE_KNIGHT] = STARTUP_WHITE_KNIGHTS_BITMAP;
-		bitboards[BITBOARD_BLACK_KNIGHT] = STARTUP_BLACK_KNIGHTS_BITMAP;
-
-		bitboards[BITBOARD_WHITE_QUEEN] = STARTUP_WHITE_QUEEN_BITMAP;
-		bitboards[BITBOARD_BLACK_QUEEN] = STARTUP_BLACK_QUEEN_BITMAP;
-
-		bitboards[BITBOARD_WHITE_KING] = STARTUP_WHITE_KING_BITMAP;
-		bitboards[BITBOARD_BLACK_KING] = STARTUP_BLACK_KING_BITMAP;
-
-		bitboards[BITBOARD_WHITE_PIECES] = STARTUP_WHITE_PIECES_BITMAP;
-		bitboards[BITBOARD_BLACK_PIECES] = STARTUP_BLACK_PIECES_BITMAP;
+	uint64_t plmForWhitePawn() {
+		uint64_t moves = 0;
+		// one to front
+		uint64_t shiftedOneToFront = (bitboards[BITBOARD_WHITE_PAWN] & MASK_H_INVERSE) << 8; // move all white pawns one to front
+		moves |= shiftedOneToFront & ~bitboards[BITBOARD_ALL_PIECES]; // pawn can move shifted one to front when there is no other piece
+		//two to front
+		uint64_t twoToFront = (bitboards[BITBOARD_WHITE_PAWN] & MASK_2) << 16; // move all pawans that are on row 2 2 fields to front
+		twoToFront &= ~bitboards[BITBOARD_ALL_PIECES]; // subtract all pieces
+		moves |= twoToFront;
+		// left hits
+		uint64_t leftHits = (bitboards[BITBOARD_WHITE_PAWN] & MASK_A8_INVERSE) << ;
 	}
 
 	void getFenString(std::string& fen) {
@@ -238,19 +295,46 @@ public:
 		fenStringFormat += "KQkq - 0 1";
 	}
 private:
-	uint64_t bitboards[BITBOARDS_SIZE]; // one per 
-
+	uint64_t bitboards[BITBOARDS_SIZE];
 	uint8_t colorToMove = COLOR_WHITE;
+	bool enPassant;
+	uint8_t castleRights;
+
+	void setupInitialBoard() {
+		bitboards[BITBOARD_WHITE_PAWN]		= STARTUP_WHITE_PAWNS_BITMAP;
+		bitboards[BITBOARD_BLACK_PAWN]		= STARTUP_BLACK_PAWNS_BITMAP;
+
+		bitboards[BITBOARD_WHITE_ROOK]		= STARTUP_WHITE_ROOKS_BITMAP;
+		bitboards[BITBOARD_BLACK_ROOK]		= STARTUP_BLACK_ROOKS_BITMAP;
+
+		bitboards[BITBOARD_WHITE_BISHOP]	= STARTUP_WHITE_BISHOPS_BITMAP;
+		bitboards[BITBOARD_BLACK_BISHOP]	= STARTUP_BLACK_BISHOPS_BITMAP;
+
+		bitboards[BITBOARD_WHITE_KNIGHT]	= STARTUP_WHITE_KNIGHTS_BITMAP;
+		bitboards[BITBOARD_BLACK_KNIGHT]	= STARTUP_BLACK_KNIGHTS_BITMAP;
+
+		bitboards[BITBOARD_WHITE_QUEEN]		= STARTUP_WHITE_QUEEN_BITMAP;
+		bitboards[BITBOARD_BLACK_QUEEN]		= STARTUP_BLACK_QUEEN_BITMAP;
+
+		bitboards[BITBOARD_WHITE_KING]		= STARTUP_WHITE_KING_BITMAP;
+		bitboards[BITBOARD_BLACK_KING]		= STARTUP_BLACK_KING_BITMAP;
+
+		bitboards[BITBOARD_WHITE_PIECES]	= STARTUP_WHITE_PIECES_BITMAP;
+		bitboards[BITBOARD_BLACK_PIECES]	= STARTUP_BLACK_PIECES_BITMAP;
+		bitboards[BITBOARD_ALL_PIECES]		= STARTUP_ALL_PIECES_BITMAP;
+	}
 
 	// Only used for initial setup because chess never adds figures to the board
-	void addPiece(Piece piece, Square square) {
-		bitboards[piece.getPieceIndex()] |= square.toBitboard();
+	void addPiece(PieceType type, Square square) {
+		uint64_t bitBoard = square.toBitboard();
+		bitboards[type.getBitboardIndex()] |= bitBoard;
+		bitboards[type.getBitboardColorIndex()] |= bitBoard;
+		bitboards[BITBOARD_ALL_PIECES] |= bitBoard;
 	}
 
-	void move(Move move) {
-
-		colorToMove = (colorToMove + 1) % 2;
-	}
+	//void move(Move move) {
+	//	colorToMove = (colorToMove + 1) % 2;
+	//}
 
 	void populateFenCharArray(char* fenCharArray, uint64_t pieceBitboard, char pieceChar) {
 		int i = 0;
